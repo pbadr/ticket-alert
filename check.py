@@ -77,7 +77,7 @@ def load_state():
 
 def save_state(state):
     # No timestamp here on purpose: the file (and the repo) only changes
-    # when something actually happens, so there's no commit every 10 minutes.
+    # when something actually happens, so there's no commit every run.
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
         f.write("\n")
@@ -97,7 +97,7 @@ def main():
             print(f"::error::{msg}")
             return 1
         print(f"::warning::{msg} Skipping this scheduled run.")
-        return 0  # no failure email every 10 minutes while setup is unfinished
+        return 0  # no failure email every run while setup is unfinished
 
     state = load_state()
     send_failed = False
@@ -143,11 +143,12 @@ def main():
             state["bad_streak"][name] = 0
 
     if TEST_PING:
+        # Same urgent priority as the real alert, so you hear what it sounds like.
         ok = notify(
             "Doomsday checker test",
             "Test ping from GitHub Actions. Checking every 5 min. Current status:\n"
             + "\n".join(report),
-            priority="default",
+            priority="urgent",
             tags="white_check_mark",
         )
         send_failed = send_failed or not ok

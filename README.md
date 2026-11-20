@@ -49,7 +49,8 @@ That's it. The schedule starts on its own.
   is retried on the next run.
 - **Test ping**: on manual *Run workflow*, and whenever a change to `check.py`
   or the workflow is pushed (so every deploy confirms itself). Never on
-  scheduled runs.
+  scheduled runs. It's sent at urgent priority, same as the real alert, so it
+  sounds exactly like the real thing; the title says "test".
 
 ## Limits worth knowing
 
