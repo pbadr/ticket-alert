@@ -1,4 +1,7 @@
 {
   "alerted": [],
-  "bad_streak": {}
+  "bad_streak": {
+    "Cue Cinemas": 0,
+    "Cinestar": 0
+  }
 }
