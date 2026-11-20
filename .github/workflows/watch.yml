@@ -2,9 +2,15 @@ name: Doomsday ticket watch
 
 on:
   schedule:
-    # Every 10 minutes (UTC). Off the round minutes, which GitHub delays most.
-    - cron: "3,13,23,33,43,53 * * * *"
+    # Every 5 minutes (GitHub's minimum), at :03, :08, :13 ... :58.
+    # Off the round minutes, which GitHub delays most.
+    - cron: "3-58/5 * * * *"
   workflow_dispatch: # "Run workflow" button: also sends a test ping
+  push: # deploying a change to the checker also sends a test ping
+    branches: [main]
+    paths:
+      - check.py
+      - .github/workflows/watch.yml
 
 permissions:
   contents: write # commit state.json
@@ -31,7 +37,7 @@ jobs:
         id: check
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          TEST_PING: ${{ github.event_name == 'workflow_dispatch' }}
+          TEST_PING: ${{ github.event_name != 'schedule' }}
         run: python check.py
 
       - name: Save state

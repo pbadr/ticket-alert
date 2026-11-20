@@ -17,7 +17,7 @@ CINEMAS = {
 }
 NO_SESSIONS = "no sessions scheduled"
 MUST_CONTAIN = "doomsday"
-BAD_CHECKS_BEFORE_HEADS_UP = 3  # 3 runs x 10 min = ~30 min of unreadable page
+BAD_CHECKS_BEFORE_HEADS_UP = 6  # 6 runs x 5 min = ~30 min of unreadable page
 
 NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
@@ -93,7 +93,7 @@ def set_output(name, value):
 def main():
     if not NTFY_TOPIC:
         msg = "NTFY_TOPIC is not set (add it as a repository secret)."
-        if TEST_PING:  # manual run: fail loudly so the setup problem is obvious
+        if TEST_PING:  # manual/deploy run: fail loudly so the setup problem is obvious
             print(f"::error::{msg}")
             return 1
         print(f"::warning::{msg} Skipping this scheduled run.")
@@ -145,7 +145,8 @@ def main():
     if TEST_PING:
         ok = notify(
             "Doomsday checker test",
-            "Test ping from GitHub Actions. Current status:\n" + "\n".join(report),
+            "Test ping from GitHub Actions. Checking every 5 min. Current status:\n"
+            + "\n".join(report),
             priority="default",
             tags="white_check_mark",
         )

@@ -2,7 +2,7 @@
 
 Sends a phone notification (via ntfy) when Avengers: Doomsday showtimes
 appear on the Cue Cinemas or Cinestar (Lahore) booking pages. Runs free on
-GitHub Actions about every 10 minutes, so no PC needs to stay on.
+GitHub Actions about every 5 minutes, so no PC needs to stay on.
 
 ## Files
 
@@ -16,7 +16,7 @@ state.json                    remembers which cinemas already alerted
 
 **Keep this repo public.** Public repos get unlimited free Actions minutes.
 A private repo on the free plan would run out before 18 Dec
-(144 runs a day x 1 billed minute each, against 2,000 included minutes a month).
+(288 runs a day x 1 billed minute each, against 2,000 included minutes a month).
 
 1. **Add your ntfy topic as a secret** so it stays hidden in the public repo:
    *Settings > Secrets and variables > Actions > New repository secret*
@@ -37,17 +37,19 @@ That's it. The schedule starts on its own.
 
 ## How it behaves
 
-- **Every ~10 min**: checks each cinema that hasn't alerted yet. No notification
+- **Every ~5 min**: checks each cinema that hasn't alerted yet. No notification
   unless something happens.
 - **Showtimes appear**: urgent ntfy alert with a tap-to-book link. That cinema
   is then skipped on later runs.
 - **Both alerted**: the workflow disables itself.
 - **Page unreadable** (not HTTP 200, or "doomsday" missing): logged as a warning,
-  never sent as a ticket alert. After 3 bad checks in a row (about 30 min) you get
+  never sent as a ticket alert. After 6 bad checks in a row (about 30 min) you get
   one normal-priority "Checker can't read..." heads-up, since nobody watches the logs.
 - **ntfy unreachable**: the run is marked failed (GitHub emails you) and the alert
   is retried on the next run.
-- **Test ping**: only on manual *Run workflow*, not every scheduled run.
+- **Test ping**: on manual *Run workflow*, and whenever a change to `check.py`
+  or the workflow is pushed (so every deploy confirms itself). Never on
+  scheduled runs.
 
 ## Limits worth knowing
 
