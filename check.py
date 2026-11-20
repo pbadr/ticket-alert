@@ -1,12 +1,14 @@
-"""Avengers: Doomsday ticket watcher - single run, for GitHub Actions.
+"""Avengers: Doomsday ticket watcher - single run.
 
 Each run checks every cinema that hasn't alerted yet, sends an ntfy alert
-when showtimes appear, records that in state.json, and exits. The workflow
-commits state.json back to the repo so the next run remembers.
+when showtimes appear, records that in state.json, and exits. On GitHub
+Actions the workflow commits state.json back to the repo so the next run
+remembers; on a server, cron runs it (see setup-vps.sh).
 """
 
 import json
 import os
+import socket
 import sys
 
 import requests
@@ -23,6 +25,7 @@ NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 TEST_PING = os.environ.get("TEST_PING", "").lower() == "true"
 STATE_FILE = os.environ.get("STATE_FILE", "state.json")
+SOURCE = "GitHub Actions" if os.environ.get("GITHUB_ACTIONS") == "true" else socket.gethostname()
 
 
 def ascii_only(value):
@@ -132,7 +135,7 @@ def main():
                 notify(
                     f"Checker can't read the {name} page",
                     f"{streak} checks in a row failed ({detail}). The page may have "
-                    "changed or be blocking GitHub. Check it manually; you won't get "
+                    f"changed or be blocking {SOURCE}. Check it manually; you won't get "
                     "a ticket alert for this cinema until it's readable again.",
                     click=url,
                     priority="default",
@@ -146,8 +149,7 @@ def main():
         # Same urgent priority as the real alert, so you hear what it sounds like.
         ok = notify(
             "Doomsday checker test",
-            "Test ping from GitHub Actions. Checking every 5 min. Current status:\n"
-            + "\n".join(report),
+            f"Test ping from {SOURCE}. Current status:\n" + "\n".join(report),
             priority="urgent",
             tags="white_check_mark",
         )

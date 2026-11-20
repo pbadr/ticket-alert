@@ -35,6 +35,20 @@ A private repo on the free plan would run out before 18 Dec
 
 That's it. The schedule starts on its own.
 
+## Run it on your own server too (optional)
+
+GitHub's scheduler can be slow to start and late under load. On any Linux
+server with Python 3, this one command installs the checker, sends a test
+ping and adds a cron job:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pbadr/ticket-alert/main/setup-vps.sh | NTFY_TOPIC=your-topic bash
+```
+
+Add `INTERVAL=1` before `bash` to check every minute (default 5). Safe to
+re-run. Log: `~/doomsday.log`. If both GitHub and the server are running, you
+get two alerts when tickets drop. The test ping says where it came from.
+
 ## How it behaves
 
 - **Every ~5 min**: checks each cinema that hasn't alerted yet. No notification
