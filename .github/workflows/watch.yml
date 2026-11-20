@@ -1,0 +1,55 @@
+name: Doomsday ticket watch
+
+on:
+  schedule:
+    # Every 10 minutes (UTC). Off the round minutes, which GitHub delays most.
+    - cron: "3,13,23,33,43,53 * * * *"
+  workflow_dispatch: # "Run workflow" button: also sends a test ping
+
+permissions:
+  contents: write # commit state.json
+  actions: write  # disable this workflow when both cinemas have alerted
+
+concurrency:
+  group: doomsday-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Check cinemas
+        id: check
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TEST_PING: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python check.py
+
+      - name: Save state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          if git diff --cached --quiet; then
+            echo "State unchanged."
+          else
+            git commit -m "Update watch state"
+            git pull --rebase
+            git push
+          fi
+
+      - name: Stop the schedule when both cinemas have alerted
+        if: steps.check.outputs.done == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow disable watch.yml --repo "$GITHUB_REPOSITORY"
