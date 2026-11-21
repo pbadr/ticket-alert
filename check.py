@@ -10,6 +10,7 @@ import json
 import os
 import socket
 import sys
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -25,7 +26,25 @@ NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 TEST_PING = os.environ.get("TEST_PING", "").lower() == "true"
 STATE_FILE = os.environ.get("STATE_FILE", "state.json")
-SOURCE = "GitHub Actions" if os.environ.get("GITHUB_ACTIONS") == "true" else socket.gethostname()
+ON_GITHUB = os.environ.get("GITHUB_ACTIONS") == "true"
+SOURCE = "GitHub Actions" if ON_GITHUB else socket.gethostname()
+PKT = timezone(timedelta(hours=5), "PKT")  # Pakistan time (no daylight saving)
+
+
+def log(msg, level=None):
+    """Print one log line.
+
+    On a server each line starts with the date and time in Pakistan time, so
+    `tail ~/doomsday.log` shows when the last check ran. On GitHub Actions the
+    log viewer adds its own timestamps, and warnings/errors use GitHub's
+    ::warning:: / ::error:: syntax so they show up as annotations on the run.
+    """
+    if ON_GITHUB:
+        print(f"::{level}::{msg}" if level else msg, flush=True)
+    else:
+        stamp = datetime.now(PKT).strftime("%Y-%m-%d %H:%M:%S PKT")
+        prefix = f"{level.upper()}: " if level else ""
+        print(f"[{stamp}] {prefix}{msg}", flush=True)
 
 
 def ascii_only(value):
@@ -48,7 +67,7 @@ def notify(title, message, click=None, priority="urgent", tags="ticket"):
         r.raise_for_status()
         return True
     except requests.RequestException as e:
-        print(f"::error::ntfy send failed: {e}")
+        log(f"ntfy send failed: {e}", "error")
         return False
 
 
@@ -97,9 +116,9 @@ def main():
     if not NTFY_TOPIC:
         msg = "NTFY_TOPIC is not set (add it as a repository secret)."
         if TEST_PING:  # manual/deploy run: fail loudly so the setup problem is obvious
-            print(f"::error::{msg}")
+            log(msg, "error")
             return 1
-        print(f"::warning::{msg} Skipping this scheduled run.")
+        log(f"{msg} Skipping this scheduled run.", "warning")
         return 0  # no failure email every run while setup is unfinished
 
     state = load_state()
@@ -108,11 +127,12 @@ def main():
 
     for name, url in CINEMAS.items():
         if name in state["alerted"]:
+            log(f"{name}: already alerted, not checking again")
             report.append(f"{name}: already alerted")
             continue
 
         status, detail = check(url)
-        print(f"{name}: {detail}")
+        log(f"{name}: {detail}")
         report.append(f"{name}: {detail}")
 
         if status == "on_sale":
@@ -128,7 +148,7 @@ def main():
                 send_failed = True  # not marked, so the next run tries again
 
         elif status == "bad":
-            print(f"::warning::{name}: page may have changed ({detail}). No alert sent.")
+            log(f"{name}: page may have changed ({detail}). No alert sent.", "warning")
             streak = state["bad_streak"].get(name, 0) + 1
             state["bad_streak"][name] = streak
             if streak == BAD_CHECKS_BEFORE_HEADS_UP:
@@ -160,7 +180,10 @@ def main():
     all_done = all(name in state["alerted"] for name in CINEMAS)
     set_output("done", "true" if all_done else "false")
     if all_done:
-        print("Both cinemas have alerted. The workflow will now disable itself.")
+        if ON_GITHUB:
+            log("Both cinemas have alerted. The workflow will now disable itself.")
+        else:
+            log("Both cinemas have alerted. Nothing left to check; you can remove the cron job.")
 
     return 1 if send_failed else 0
 

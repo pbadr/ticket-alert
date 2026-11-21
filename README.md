@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/pbadr/ticket-alert/main/setup-vps.s
 ```
 
 Add `INTERVAL=1` before `bash` to check every minute (default 5). Safe to
-re-run. Log: `~/doomsday.log`. If both GitHub and the server are running, you
+re-run. Log: `~/doomsday.log`, with a Pakistan-time timestamp on every line. If both GitHub and the server are running, you
 get two alerts when tickets drop. The test ping says where it came from.
 
 ## How it behaves
