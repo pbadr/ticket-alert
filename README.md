@@ -49,6 +49,30 @@ Add `INTERVAL=1` before `bash` to check every minute (default 5). Safe to
 re-run. Log: `~/doomsday.log`, with a Pakistan-time timestamp on every line. If both GitHub and the server are running, you
 get two alerts when tickets drop. The test ping says where it came from.
 
+## Second watcher: Nueplex and Cinepax (server only)
+
+`check_nueplex_cinepax.py` watches Nueplex (Karachi) and all Cinepax cinemas,
+on its own ntfy topic, state file and log, side by side with the Cue/Cinestar
+watcher:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pbadr/ticket-alert/main/setup-vps.sh | WATCHER=nueplex-cinepax NTFY_TOPIC=other-topic bash
+```
+
+Log: `~/doomsday-nueplex-cinepax.log`. How it decides tickets are out:
+
+- **Nueplex**: Doomsday appears in the homepage's showtime "All Movies"
+  dropdown, which only lists films with bookable shows. One alert, then done.
+- **Cinepax**: Doomsday appears in a cinema's advance-booking list, or in its
+  now-showing list with sessions (from the JSON API behind web.cinepax.com).
+  One alert per run naming the cinemas that newly opened, so more can follow
+  as other cinemas open. Backup: a one-off heads-up if Cinepax's coming-soon
+  list flags Doomsday as having sessions before any cinema lists them.
+- Retries a timed-out request once. 6 unreadable checks in a row (~30 min)
+  send one "Checker can't read..." heads-up.
+
+To reset it (watch again from scratch): `rm ~/.doomsday-nueplex-cinepax-state.json`.
+
 ## How it behaves
 
 - **Every ~5 min**: checks each cinema that hasn't alerted yet. No notification

@@ -1,17 +1,38 @@
 #!/usr/bin/env bash
-# One-command setup for running the Doomsday ticket checker on your own server.
+# One-command setup for running a Doomsday ticket checker on your own server.
 #
+#   Cue / Cinestar (default):
 #   curl -fsSL https://raw.githubusercontent.com/pbadr/ticket-alert/main/setup-vps.sh | NTFY_TOPIC=your-topic bash
 #
+#   Nueplex / Cinepax:
+#   curl -fsSL https://raw.githubusercontent.com/pbadr/ticket-alert/main/setup-vps.sh | WATCHER=nueplex-cinepax NTFY_TOPIC=other-topic bash
+#
 # Optional: INTERVAL=1 (minutes between checks, default 5).
-# Safe to re-run: it updates the code and replaces its own cron line.
+# Safe to re-run: it updates the code and replaces only its own cron line,
+# so the two watchers can run side by side.
 set -euo pipefail
 
 : "${NTFY_TOPIC:?Set NTFY_TOPIC, e.g.  ... | NTFY_TOPIC=your-topic bash}"
 INTERVAL="${INTERVAL:-5}"
+WATCHER="${WATCHER:-cue-cinestar}"
 DIR="$HOME/ticket-alert"
-STATE="$HOME/.doomsday-state.json"   # outside the repo, so 'git pull' never clashes
-LOG="$HOME/doomsday.log"
+case "$WATCHER" in
+  cue-cinestar)
+    SCRIPT=check.py
+    STATE="$HOME/.doomsday-state.json"   # outside the repo, so 'git pull' never clashes
+    LOG="$HOME/doomsday.log"
+    LOCK=/tmp/doomsday.lock
+    TAG="# ticket-alert" ;;
+  nueplex-cinepax)
+    SCRIPT=check_nueplex_cinepax.py
+    STATE="$HOME/.doomsday-nueplex-cinepax-state.json"
+    LOG="$HOME/doomsday-nueplex-cinepax.log"
+    LOCK=/tmp/doomsday-nueplex-cinepax.lock
+    TAG="# ticket-alert-nueplex-cinepax" ;;
+  *)
+    echo "Unknown WATCHER '$WATCHER' (use cue-cinestar or nueplex-cinepax)"
+    exit 1 ;;
+esac
 
 missing=""
 for cmd in git python3 crontab flock; do
@@ -38,16 +59,16 @@ if ! python3 -m venv .venv >/dev/null 2>&1; then
 fi
 .venv/bin/pip install -q --disable-pip-version-check requests
 
-echo "3/4 Checking the pages and sending a test ping..."
-if ! NTFY_TOPIC="$NTFY_TOPIC" STATE_FILE="$STATE" TEST_PING=true .venv/bin/python check.py; then
+echo "3/4 Checking the sites and sending a test ping ($WATCHER)..."
+if ! NTFY_TOPIC="$NTFY_TOPIC" STATE_FILE="$STATE" TEST_PING=true .venv/bin/python "$SCRIPT"; then
   echo "The test ping failed (see the error above), so the schedule was NOT installed."
   exit 1
 fi
 
 echo "4/4 Scheduling a check every $INTERVAL min..."
-LINE="*/$INTERVAL * * * * cd $DIR && NTFY_TOPIC=$NTFY_TOPIC STATE_FILE=$STATE flock -n /tmp/doomsday.lock .venv/bin/python check.py >> $LOG 2>&1 # ticket-alert"
-( crontab -l 2>/dev/null | grep -v '# ticket-alert$' || true; echo "$LINE" ) | crontab -
+LINE="*/$INTERVAL * * * * cd $DIR && NTFY_TOPIC=$NTFY_TOPIC STATE_FILE=$STATE flock -n $LOCK .venv/bin/python $SCRIPT >> $LOG 2>&1 $TAG"
+( crontab -l 2>/dev/null | grep -v -- "${TAG}\$" || true; echo "$LINE" ) | crontab -
 
 echo
-echo "Done. Checking every $INTERVAL min. Log: $LOG"
-echo "Remove later with: crontab -l | grep -v '# ticket-alert\$' | crontab -"
+echo "Done ($WATCHER). Checking every $INTERVAL min. Log: $LOG"
+echo "Remove later with: crontab -l | grep -v -- '${TAG}\$' | crontab -"
