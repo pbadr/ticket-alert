@@ -12,4 +12,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -q requests
-      - run: python discover.py
+      - name: Real-site dry run (throwaway topic, no test ping)
+        env:
+          NTFY_TOPIC: throwaway-dryrun-${{ github.run_id }}
+          STATE_FILE: /tmp/state.json
+        run: |
+          python check_nueplex_cinepax.py
+          echo "--- state ---"; cat /tmp/state.json
