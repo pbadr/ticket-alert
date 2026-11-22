@@ -25,6 +25,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import requests
+import urllib3.util.connection as urllib3_connection
 
 TITLE_MATCH = "doomsday"
 NUEPLEX_URL = "https://www.nueplex.com/"
@@ -59,15 +60,34 @@ def ascii_only(value):
     return str(value).encode("ascii", "ignore").decode("ascii")
 
 
+def _post_ntfy(message, headers, ipv4_only):
+    original = urllib3_connection.allowed_gai_family
+    if ipv4_only:
+        urllib3_connection.allowed_gai_family = lambda: socket.AF_INET
+    try:
+        return requests.post(f"{NTFY_SERVER}/{NTFY_TOPIC}", data=message.encode("utf-8"),
+                             headers=headers, timeout=20)
+    finally:
+        urllib3_connection.allowed_gai_family = original
+
+
 def notify(title, message, click=None, priority="urgent", tags="ticket"):
     headers = {"Title": title, "Priority": priority, "Tags": tags}
     if click:
         headers["Click"] = click
     headers = {k: ascii_only(v) for k, v in headers.items()}
     try:
-        r = requests.post(f"{NTFY_SERVER}/{NTFY_TOPIC}", data=message.encode("utf-8"),
-                          headers=headers, timeout=20)
-        r.raise_for_status()
+        try:
+            # ntfy.sh limits anonymous senders per address. Over IPv6 that
+            # address block can be shared with other customers of the same
+            # VPS provider, who can use up the quota; IPv4 is usually yours
+            # alone. Fall back to the default route if there's no IPv4.
+            r = _post_ntfy(message, headers, ipv4_only=True)
+        except requests.ConnectionError:
+            r = _post_ntfy(message, headers, ipv4_only=False)
+        if r.status_code >= 400:
+            log(f"ntfy send failed: HTTP {r.status_code} {r.text.strip()[:200]}", "error")
+            return False
         return True
     except requests.RequestException as e:
         log(f"ntfy send failed: {e}", "error")
