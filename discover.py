@@ -1,77 +1,83 @@
-"""One-off: find how Nueplex and Cinepax load movies/showtimes (temporary branch)."""
+"""One-off round 2: JSON shapes for Cinepax, showtime request for Nueplex."""
+import json
 import re
-import sys
-from urllib.parse import urljoin
 
 import requests
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"}
-PAGES = [
-    "https://www.nueplex.com/",
-    "https://www.nueplex.com/movie/Wildwood.html",
-    "https://web.cinepax.com/",
-    "https://web.cinepax.com/pages/movies.html",
-]
-URL_RE = re.compile(r"""(?:https?:)?//[^\s"'<>()\\]+|/[A-Za-z0-9_\-./]*(?:api|Api|API|ajax|Ajax|php|json|aspx|ashx|svc)[A-Za-z0-9_\-./?=&]*""")
-CALL_RE = re.compile(r"(fetch\s*\(|\$\.(?:ajax|get|post|getJSON)\s*\(|axios[.(]|XMLHttpRequest|\.open\s*\(\s*['\"](?:GET|POST)|baseURL|BASE_URL|apiUrl|API_URL|endpoint)", re.I)
+CP = "https://web.cinepax.com"
 
 
-def get(url):
+def show(label, url, **kw):
     try:
-        r = requests.get(url, headers=UA, timeout=30)
-        return r.status_code, r.text, r.headers.get("content-type", "")
+        r = requests.get(url, headers=UA, timeout=30, **kw)
     except Exception as e:
-        return None, f"ERROR {e}", ""
+        print(f"\n### {label} {url} ERROR {e}")
+        return None
+    print(f"\n### {label} {url} -> {r.status_code} {r.headers.get('content-type')} len={len(r.text)}")
+    try:
+        data = r.json()
+    except Exception:
+        print(r.text[:800])
+        return None
+    if isinstance(data, list):
+        print(f"list of {len(data)}")
+        for item in data[:2]:
+            print(json.dumps(item, ensure_ascii=False)[:2500])
+        if data and isinstance(data[0], dict):
+            for item in data:
+                print("  -", {k: item.get(k) for k in ("id", "filmCode", "title", "name", "city", "cinemaId", "releaseDate", "status") if k in item})
+    else:
+        print(json.dumps(data, ensure_ascii=False)[:3000])
+    print("contains 'doomsday':", "doomsday" in r.text.lower(), "| 'avengers':", "avengers" in r.text.lower())
+    return data
 
 
-def snippets(text, regex, width=160, limit=40):
-    out = []
-    for m in regex.finditer(text):
-        s = max(0, m.start() - width)
-        out.append(text[s:m.end() + width].replace("\n", " "))
-        if len(out) >= limit:
-            break
-    return out
+cinemas = show("CINEMAS", f"{CP}/api/cinemas") or []
+show("UPCOMING", f"{CP}/api/upcoming")
+show("SETTINGS(defaultCinemaId)", f"{CP}/api/cms/settings")
+first_movie = None
+for c in cinemas[:20]:
+    cid = c.get("id") or c.get("cinemaId")
+    mv = show(f"MOVIES {c.get('name')}", f"{CP}/api/movies?cinemaId={cid}")
+    ab = show(f"ADVANCE {c.get('name')}", f"{CP}/api/advance-booking?cinemaId={cid}")
+    if not first_movie and isinstance(mv, list) and mv:
+        first_movie = (cid, mv[0])
+if first_movie:
+    cid, m = first_movie
+    code = m.get("filmCode") or m.get("id")
+    show("SHOWTIMES sample", f"{CP}/api/showtimes?filmCode={code}&cinemaId={cid}")
+    show("MOVIE detail sample", f"{CP}/api/movie/{code}?cinemaId={cid}")
 
-
-seen_js = set()
-for page in PAGES:
-    code, html, ctype = get(page)
-    print(f"\n######## PAGE {page} -> {code} {ctype} len={len(html)}")
-    if code is None:
-        print(html)
-        continue
-    scripts = re.findall(r"<script[^>]+src=[\"']([^\"']+)", html, re.I)
-    print("SCRIPT SRCS:", *scripts, sep="\n  ")
-    print("FORMS/ACTIONS:", re.findall(r"<form[^>]*>", html, re.I)[:10])
-    print("SELECTS:")
-    for sel in re.findall(r"<select[\s\S]{0,3000}?</select>", html, re.I)[:6]:
-        print("  ", re.sub(r"\s+", " ", sel)[:1500])
-    print("URL-LIKE (unique):")
-    for u in sorted(set(URL_RE.findall(html)))[:120]:
-        print("  ", u)
-    inline = re.findall(r"<script(?![^>]*src)[^>]*>([\s\S]*?)</script>", html, re.I)
-    print(f"INLINE SCRIPTS: {len(inline)}")
-    for i, s in enumerate(inline):
-        hits = snippets(s, CALL_RE, 200, 15)
-        if hits:
-            print(f"  -- inline #{i} (len {len(s)}) calls:")
-            for h in hits:
-                print("     ", h[:600])
-    for low in ("coming soon", "comingsoon", "advance", "doomsday", "avengers"):
-        idx = html.lower().find(low)
-        print(f"FIRST '{low}':", idx, re.sub(r"\s+", " ", html[max(0, idx - 300):idx + 500]) if idx >= 0 else "")
-    for src in scripts:
-        js = urljoin(page, src)
-        if js in seen_js or any(x in js for x in ("jquery", "bootstrap", "google", "gtag", "facebook", "fontawesome", "swiper", "slick", "owl.carousel", "analytics", "cdn.jsdelivr", "cdnjs")):
-            continue
-        seen_js.add(js)
-        c, body, t = get(js)
-        print(f"\n  ==== JS {js} -> {c} len={len(body)}")
-        if c != 200:
-            continue
-        for u in sorted(set(URL_RE.findall(body)))[:80]:
-            print("     URL:", u)
-        for h in snippets(body, CALL_RE, 220, 25):
-            print("     CALL:", h[:700])
-sys.stdout.flush()
+# ---- Nueplex
+print("\n\n######## NUEPLEX")
+r = requests.get("https://www.nueplex.com/", headers=UA, timeout=30)
+html = r.text
+m = re.search(r"function\s+generateQueryStr[\s\S]{0,1500}", html)
+print("generateQueryStr:", m.group(0) if m else "NOT FOUND")
+for blk in re.findall(r"<script(?![^>]*src)[^>]*>([\s\S]*?)</script>", html, re.I):
+    if "showtime.html" in blk:
+        print("---- inline block with showtime.html (first 5000 chars):")
+        print(blk[:5000])
+        break
+opts = re.findall(r'<select name="movie" id="dateShowMovie">([\s\S]*?)</select>', html)
+print("movie select:", re.sub(r"\s+", " ", opts[0])[:800] if opts else None)
+movie_ids = re.findall(r'<option value="(\d+)"', opts[0]) if opts else []
+s = requests.Session()
+s.headers.update(UA)
+s.get("https://www.nueplex.com/", timeout=30)
+for data in (
+    {"branch": "All", "cinema": "All", "movie": "All", "date": ""},
+    {"branch": "1", "cinema": "All", "movie": movie_ids[0] if movie_ids else "All", "date": ""},
+):
+    try:
+        rr = s.post("https://www.nueplex.com/showtime.html", data=data, timeout=30,
+                    headers={"X-Requested-With": "XMLHttpRequest", "Referer": "https://www.nueplex.com/"})
+        print(f"\nPOST showtime.html {data} -> {rr.status_code} len={len(rr.text)}")
+        print(re.sub(r"\s+", " ", rr.text)[:2500])
+    except Exception as e:
+        print("POST error", e)
+for data in ({"branch": 1}, {"branch": 2}):
+    rr = s.post("https://www.nueplex.com/branch", data=data, timeout=30,
+                headers={"X-Requested-With": "XMLHttpRequest", "Referer": "https://www.nueplex.com/"})
+    print(f"\nPOST branch {data} -> {rr.status_code} len={len(rr.text)}: {re.sub(chr(10), ' ', rr.text)[:800]}")
