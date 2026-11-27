@@ -8,15 +8,26 @@ remembers; on a server, cron runs it (see setup-vps.sh).
 
 import json
 import os
+import re
 import socket
 import sys
 from datetime import datetime, timedelta, timezone
 
 import requests
+import urllib3.util.connection as urllib3_connection
 
 CINEMAS = {
     "Cue Cinemas": "https://cuecinemas.com/Browsing/Movies/Details/f-F000001483",
     "Cinestar": "https://cinestar.pk/Browsing/Movies/Details/f-AVENDOO002",
+    # Universal Cinemas runs the same Vista system, but its site covers two
+    # cinemas: Emporium Mall Lahore (code 8888) and The Grand Mall Multan (9999).
+    "Universal Cinemas Lahore": "https://universalcinemas.com/browsing/Movies/Details/m-HO00001519",
+}
+# For sites listing several cinemas: only sessions at this cinema code count.
+# Each session's booking link carries it (visSelectTickets.aspx?cinemacode=8888),
+# and each cinema's block links to /browsing/Cinemas/Details/<code>.
+ONLY_CINEMA_CODE = {
+    "Universal Cinemas Lahore": "8888",
 }
 NO_SESSIONS = "no sessions scheduled"
 MUST_CONTAIN = "doomsday"
@@ -52,27 +63,45 @@ def ascii_only(value):
     return str(value).encode("ascii", "ignore").decode("ascii")
 
 
+def _post_ntfy(message, headers, ipv4_only):
+    original = urllib3_connection.allowed_gai_family
+    if ipv4_only:
+        urllib3_connection.allowed_gai_family = lambda: socket.AF_INET
+    try:
+        return requests.post(f"{NTFY_SERVER}/{NTFY_TOPIC}", data=message.encode("utf-8"),
+                             headers=headers, timeout=20)
+    finally:
+        urllib3_connection.allowed_gai_family = original
+
+
 def notify(title, message, click=None, priority="urgent", tags="ticket"):
     headers = {"Title": title, "Priority": priority, "Tags": tags}
     if click:
         headers["Click"] = click
     headers = {k: ascii_only(v) for k, v in headers.items()}
     try:
-        r = requests.post(
-            f"{NTFY_SERVER}/{NTFY_TOPIC}",
-            data=message.encode("utf-8"),
-            headers=headers,
-            timeout=20,
-        )
-        r.raise_for_status()
+        try:
+            # ntfy.sh limits anonymous senders per address. Over IPv6 that
+            # address block can be shared with other customers of the same
+            # VPS provider, who can use up the quota; IPv4 is usually yours
+            # alone. Fall back to the default route if there's no IPv4.
+            r = _post_ntfy(message, headers, ipv4_only=True)
+        except requests.ConnectionError:
+            r = _post_ntfy(message, headers, ipv4_only=False)
+        if r.status_code >= 400:
+            log(f"ntfy send failed: HTTP {r.status_code} {r.text.strip()[:200]}", "error")
+            return False
         return True
     except requests.RequestException as e:
         log(f"ntfy send failed: {e}", "error")
         return False
 
 
-def check(url):
-    """Return (status, detail). status is 'on_sale', 'waiting' or 'bad'."""
+def check(url, cinema_code=None):
+    """Return (status, detail). status is 'on_sale', 'waiting' or 'bad'.
+
+    With cinema_code, only sessions at that cinema count as on sale.
+    """
     try:
         r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     except requests.RequestException as e:
@@ -83,7 +112,14 @@ def check(url):
         return "bad", f"HTTP {r.status_code}, '{MUST_CONTAIN}' {found}"
     if NO_SESSIONS in html:
         return "waiting", "no sessions yet"
-    return "on_sale", "SHOWTIMES ARE UP"
+    if cinema_code is None:
+        return "on_sale", "SHOWTIMES ARE UP"
+    code = re.escape(cinema_code)
+    if re.search(rf"cinemacode={code}(?!\d)", html) or re.search(rf"/cinemas/details/{code}(?!\d)", html):
+        return "on_sale", "SHOWTIMES ARE UP"
+    if "visselecttickets" in html or "/cinemas/details/" in html:
+        return "waiting", "showtimes listed, but only at other cinemas so far"
+    return "bad", "no-sessions text gone but no cinema showtimes found (page may have changed)"
 
 
 def load_state():
@@ -131,7 +167,7 @@ def main():
             report.append(f"{name}: already alerted")
             continue
 
-        status, detail = check(url)
+        status, detail = check(url, ONLY_CINEMA_CODE.get(name))
         log(f"{name}: {detail}")
         report.append(f"{name}: {detail}")
 
@@ -181,9 +217,9 @@ def main():
     set_output("done", "true" if all_done else "false")
     if all_done:
         if ON_GITHUB:
-            log("Both cinemas have alerted. The workflow will now disable itself.")
+            log("All cinemas have alerted. The workflow will now disable itself.")
         else:
-            log("Both cinemas have alerted. Nothing left to check; you can remove the cron job.")
+            log("All cinemas have alerted. Nothing left to check; you can remove the cron job.")
 
     return 1 if send_failed else 0
 
