@@ -1,7 +1,7 @@
 # Doomsday ticket watch
 
 Sends a phone notification (via ntfy) when Avengers: Doomsday showtimes
-appear on the Cue Cinemas, Cinestar or Universal Cinemas booking pages. Runs free on
+appear on the Cue Cinemas, Cinestar or Universal Cinemas (Lahore only) booking pages. Runs free on
 GitHub Actions about every 5 minutes, so no PC needs to stay on.
 
 ## Files

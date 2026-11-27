@@ -8,6 +8,7 @@ remembers; on a server, cron runs it (see setup-vps.sh).
 
 import json
 import os
+import re
 import socket
 import sys
 from datetime import datetime, timedelta, timezone
@@ -18,8 +19,15 @@ import urllib3.util.connection as urllib3_connection
 CINEMAS = {
     "Cue Cinemas": "https://cuecinemas.com/Browsing/Movies/Details/f-F000001483",
     "Cinestar": "https://cinestar.pk/Browsing/Movies/Details/f-AVENDOO002",
-    # Universal Cinemas (Emporium Mall Lahore, Multan) runs the same Vista system.
-    "Universal Cinemas": "https://universalcinemas.com/browsing/Movies/Details/m-HO00001519",
+    # Universal Cinemas runs the same Vista system, but its site covers two
+    # cinemas: Emporium Mall Lahore (code 8888) and The Grand Mall Multan (9999).
+    "Universal Cinemas Lahore": "https://universalcinemas.com/browsing/Movies/Details/m-HO00001519",
+}
+# For sites listing several cinemas: only sessions at this cinema code count.
+# Each session's booking link carries it (visSelectTickets.aspx?cinemacode=8888),
+# and each cinema's block links to /browsing/Cinemas/Details/<code>.
+ONLY_CINEMA_CODE = {
+    "Universal Cinemas Lahore": "8888",
 }
 NO_SESSIONS = "no sessions scheduled"
 MUST_CONTAIN = "doomsday"
@@ -89,8 +97,11 @@ def notify(title, message, click=None, priority="urgent", tags="ticket"):
         return False
 
 
-def check(url):
-    """Return (status, detail). status is 'on_sale', 'waiting' or 'bad'."""
+def check(url, cinema_code=None):
+    """Return (status, detail). status is 'on_sale', 'waiting' or 'bad'.
+
+    With cinema_code, only sessions at that cinema count as on sale.
+    """
     try:
         r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     except requests.RequestException as e:
@@ -101,7 +112,14 @@ def check(url):
         return "bad", f"HTTP {r.status_code}, '{MUST_CONTAIN}' {found}"
     if NO_SESSIONS in html:
         return "waiting", "no sessions yet"
-    return "on_sale", "SHOWTIMES ARE UP"
+    if cinema_code is None:
+        return "on_sale", "SHOWTIMES ARE UP"
+    code = re.escape(cinema_code)
+    if re.search(rf"cinemacode={code}(?!\d)", html) or re.search(rf"/cinemas/details/{code}(?!\d)", html):
+        return "on_sale", "SHOWTIMES ARE UP"
+    if "visselecttickets" in html or "/cinemas/details/" in html:
+        return "waiting", "showtimes listed, but only at other cinemas so far"
+    return "bad", "no-sessions text gone but no cinema showtimes found (page may have changed)"
 
 
 def load_state():
@@ -149,7 +167,7 @@ def main():
             report.append(f"{name}: already alerted")
             continue
 
-        status, detail = check(url)
+        status, detail = check(url, ONLY_CINEMA_CODE.get(name))
         log(f"{name}: {detail}")
         report.append(f"{name}: {detail}")
 
