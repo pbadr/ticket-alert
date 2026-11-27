@@ -1,7 +1,7 @@
 # Doomsday ticket watch
 
 Sends a phone notification (via ntfy) when Avengers: Doomsday showtimes
-appear on the Cue Cinemas or Cinestar (Lahore) booking pages. Runs free on
+appear on the Cue Cinemas, Cinestar or Universal Cinemas booking pages. Runs free on
 GitHub Actions about every 5 minutes, so no PC needs to stay on.
 
 ## Files
@@ -27,7 +27,7 @@ A private repo on the free plan would run out before 18 Dec
 
 2. **Test it**: *Actions* tab (enable workflows if asked) > *Doomsday ticket watch*
    > *Run workflow*. Within a minute your phone should get
-   "Doomsday checker test" showing `no sessions yet` for both cinemas.
+   "Doomsday checker test" showing `no sessions yet` for all three cinemas.
    - If it shows `HTTP 403` or `'doomsday' missing` instead, that cinema is
      blocking GitHub's servers. Use Distill.io for that one.
    - No ping and a red run: open the run log. "NTFY_TOPIC is not set" means
@@ -52,7 +52,7 @@ get two alerts when tickets drop. The test ping says where it came from.
 ## Second watcher: Nueplex and Cinepax (server only)
 
 `check_nueplex_cinepax.py` watches Nueplex (Karachi) and all Cinepax cinemas,
-on its own ntfy topic, state file and log, side by side with the Cue/Cinestar
+on its own ntfy topic, state file and log, side by side with the Cue/Cinestar/Universal
 watcher:
 
 ```bash
@@ -79,7 +79,7 @@ To reset it (watch again from scratch): `rm ~/.doomsday-nueplex-cinepax-state.js
   unless something happens.
 - **Showtimes appear**: urgent ntfy alert with a tap-to-book link. That cinema
   is then skipped on later runs.
-- **Both alerted**: the workflow disables itself.
+- **All alerted**: the workflow disables itself.
 - **Page unreadable** (not HTTP 200, or "doomsday" missing): logged as a warning,
   never sent as a ticket alert. After 6 bad checks in a row (about 30 min) you get
   one normal-priority "Checker can't read..." heads-up, since nobody watches the logs.

@@ -14,7 +14,7 @@ on:
 
 permissions:
   contents: write # commit state.json
-  actions: write  # disable this workflow when both cinemas have alerted
+  actions: write  # disable this workflow when all cinemas have alerted
 
 concurrency:
   group: doomsday-watch
@@ -54,7 +54,7 @@ jobs:
             git push
           fi
 
-      - name: Stop the schedule when both cinemas have alerted
+      - name: Stop the schedule when all cinemas have alerted
         if: steps.check.outputs.done == 'true'
         env:
           GH_TOKEN: ${{ github.token }}

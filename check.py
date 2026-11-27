@@ -18,6 +18,8 @@ import urllib3.util.connection as urllib3_connection
 CINEMAS = {
     "Cue Cinemas": "https://cuecinemas.com/Browsing/Movies/Details/f-F000001483",
     "Cinestar": "https://cinestar.pk/Browsing/Movies/Details/f-AVENDOO002",
+    # Universal Cinemas (Emporium Mall Lahore, Multan) runs the same Vista system.
+    "Universal Cinemas": "https://universalcinemas.com/browsing/Movies/Details/m-HO00001519",
 }
 NO_SESSIONS = "no sessions scheduled"
 MUST_CONTAIN = "doomsday"
@@ -197,9 +199,9 @@ def main():
     set_output("done", "true" if all_done else "false")
     if all_done:
         if ON_GITHUB:
-            log("Both cinemas have alerted. The workflow will now disable itself.")
+            log("All cinemas have alerted. The workflow will now disable itself.")
         else:
-            log("Both cinemas have alerted. Nothing left to check; you can remove the cron job.")
+            log("All cinemas have alerted. Nothing left to check; you can remove the cron job.")
 
     return 1 if send_failed else 0
 
